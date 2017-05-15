@@ -3,49 +3,49 @@ package main
 import "comi/Project-Euler/utilities"
 import "fmt"
 
-func dividers(n int, sieve *utilities.Sieve) map[int]int {
-	divs := make(map[int]int)
-
+func primeFactors(n int, sieve *utilities.Sieve) map[int]int {
+	factors := make(map[int]int)
 	i := 2
+
 	for n > 1 {
 		if sieve.IsPrime(i) && n%i == 0 {
-			divs[i]++
+			factors[i]++
 			n /= i
 		} else {
 			i++
 		}
 	}
 
-	return divs
-}
-
-func initialize() (map[int]int, map[int]int, map[int]int) {
-	return make(map[int]int), make(map[int]int), make(map[int]int)
+	return factors
 }
 
 func main() {
 	sieve := utilities.NewSieve()
 	sieve.IsPrime(1000000)
 
-	divs1, divs2, divs3 := initialize()
+	n := 4
+	factors := make([]map[int]int, n-1, n)
 
 	for i := 2; ; i++ {
-		var divs4 map[int]int
-
 		if !sieve.IsPrime(i) {
-			divs4 = dividers(i, &sieve)
+			factors = append(factors, primeFactors(i, &sieve))
+			found := true
 
-			if len(divs1) == 4 && len(divs2) == 4 && len(divs3) == 4 && len(divs4) == 4 {
-				fmt.Println(i - 3)
+			for _, v := range factors {
+				if len(v) != n {
+					found = false
+					break
+				}
+			}
+
+			if found {
+				fmt.Println(i - n + 1)
 				return
 			}
 		} else {
-			divs1, divs2, divs3 = initialize()
-			divs4 = make(map[int]int)
+			factors = make([]map[int]int, n-1, n)
 		}
 
-		divs1 = divs2
-		divs2 = divs3
-		divs3 = divs4
+		factors = factors[1:n:n]
 	}
 }

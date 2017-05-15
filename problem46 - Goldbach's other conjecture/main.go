@@ -8,8 +8,8 @@ func main() {
 
 	sieve.IsPrime(10000)
 
-	for i := 2; ; i++ {
-		if i%2 != 0 && !(sieve.IsPrime(i)) {
+	for i := 3; ; i += 2 {
+		if !sieve.IsPrime(i) {
 			goldbach := false
 
 			for j := 1; j <= i; j++ {
@@ -17,6 +17,7 @@ func main() {
 
 				if sieve.IsPrime(k) {
 					goldbach = true
+					break
 				}
 			}
 
