@@ -2,41 +2,18 @@ package main
 
 import (
 	"fmt"
+	"math/big"
 )
 
-func lastTenDigits(n, pow int) int {
-	a := make([]int, 10)
-
-	a[len(a)-1] = 1
-
-	for i := 0; i < pow; i++ {
-		multiply(a, n)
-	}
-
-	res := 0
-	for _, v := range a {
-		res = res*10 + v
-	}
-
-	return res
-}
-
-func multiply(a []int, n int) {
-	carry := 0
-
-	for i := len(a) - 1; i >= 0; i-- {
-		temp := (a[i]*n + carry) / 10
-		a[i] = (a[i]*n + carry) % 10
-		carry = temp
-	}
-}
-
 func main() {
-	sum := int64(0)
+	sum := big.NewInt(0)
+	m := big.NewInt(10000000000)
 
 	for i := 1; i <= 1000; i++ {
-		sum += int64(lastTenDigits(i, i))
+		current := big.NewInt(int64(i))
+		current.Exp(current, current, m)
+		sum.Add(sum, current)
 	}
 
-	fmt.Println(sum % 10000000000)
+	fmt.Println(sum.Mod(sum, m).String())
 }
