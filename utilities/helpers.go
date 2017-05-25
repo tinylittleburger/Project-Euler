@@ -60,3 +60,37 @@ func ToNumber(a []int) int {
 
 	return n
 }
+
+func ReverseInt(number int) int {
+	reversed := 0
+
+	for number > 0 {
+		digit := number % 10
+		number /= 10
+		reversed = reversed*10 + digit
+	}
+
+	return reversed
+}
+
+func ReverseInt64(number int64) int64 {
+	reversed := int64(0)
+
+	for number > 0 {
+		digit := number % 10
+		number /= 10
+		reversed = reversed*10 + digit
+	}
+
+	return reversed
+}
+
+func ReverseString(s string) string {
+	b := []byte(s)
+
+	for i := 0; i*2 < len(b); i++ {
+		b[i], b[len(b)-1-i] = b[len(b)-1-i], b[i]
+	}
+
+	return string(b)
+}

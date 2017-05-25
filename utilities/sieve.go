@@ -8,6 +8,18 @@ func NewSieve() Sieve {
 	return Sieve{}
 }
 
+func (s *Sieve) Init(n int) {
+	if n <= 1 {
+		return
+	}
+
+	if len(s.primes) <= n {
+		s.primes = sieve(int64(n))
+	}
+	
+	return
+}
+
 func (s *Sieve) IsPrime(n int) bool {
 	if n <= 1 {
 		return false
