@@ -9,8 +9,10 @@ import (
 	"strings"
 )
 
+type rank int
+
 const (
-	HIGHCARD = iota
+	HIGHCARD rank = iota
 	ONEPAIR
 	TWOPAIRS
 	THREE
@@ -29,10 +31,17 @@ type card struct {
 	Suit  suit
 }
 
+type result int
+
+const (
+	draw result = iota
+	winnerFirst
+	winnerSecond
+)
+
 type game struct {
-	firstHand   hand
-	secondHand  hand
-	winnerFirst bool
+	firstHand  hand
+	secondHand hand
 }
 
 type hand []card
@@ -64,9 +73,10 @@ func (h hand) Swap(i, j int) {
 	h[i], h[j] = h[j], h[i]
 }
 
-func (g *game) findWinner() {
+func (g *game) findResult() result {
 	first := g.firstHand
 	sort.Sort(first)
+
 	second := g.secondHand
 	sort.Sort(second)
 
@@ -74,36 +84,34 @@ func (g *game) findWinner() {
 	rankSecond := evaluateHand(second)
 
 	if rankFirst > rankSecond {
-		g.winnerFirst = true
-		return
+		return winnerFirst
 	}
 
 	if rankFirst < rankSecond {
-		g.winnerFirst = false
-		return
+		return winnerSecond
 	}
 
 	switch rankFirst {
 	case ROYALFLUSH:
-		g.winnerFirst = false
+		return draw
 	case STRAIGHTFLUSH:
-		g.winnerFirst = highCard(first, second, 0)
+		return highCard(first, second, 0)
 	case FOUR:
-		g.winnerFirst = four(first, second)
+		return four(first, second)
 	case FULLHOUSE:
-		g.winnerFirst = fullHouse(first, second)
+		return fullHouse(first, second)
 	case FLUSH:
-		g.winnerFirst = highCard(first, second, 0)
+		return highCard(first, second, 0)
 	case STRAIGHT:
-		g.winnerFirst = highCard(first, second, 0)
+		return highCard(first, second, 0)
 	case THREE:
-		g.winnerFirst = three(first, second)
+		return three(first, second)
 	case TWOPAIRS:
-		g.winnerFirst = twoPairs(first, second)
+		return twoPairs(first, second)
 	case ONEPAIR:
-		g.winnerFirst = onePair(first, second)
+		return onePair(first, second)
 	default:
-		g.winnerFirst = highCard(first, second, 0)
+		return highCard(first, second, 0)
 	}
 }
 
@@ -115,15 +123,15 @@ func readGameFile(fileName string) ([]game, error) {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	games := make([]game, 0)
+	var games []game
 
 	for scanner.Scan() {
 		g := readGame(scanner.Text())
-		if err != nil {
-			return nil, errors.New("Reading line failed")
-		}
-
 		games = append(games, g)
+	}
+
+	if scanner.Err() != nil {
+		return nil, scanner.Err()
 	}
 
 	return games, nil
@@ -133,20 +141,17 @@ func readGame(line string) game {
 	var cards []card
 
 	for _, value := range strings.Split(line, " ") {
-
 		cards = append(cards, readCard(value))
 	}
 
-	g := game{}
-
-	g.firstHand = cards[0:5]
-	g.secondHand = cards[5:10]
-
-	return g
+	return game{
+		firstHand:  cards[0:5],
+		secondHand: cards[5:10],
+	}
 }
 
 func readCard(s string) card {
-	c := card{}
+	var c card
 
 	switch s[0] {
 	case 'A':
@@ -168,18 +173,10 @@ func readCard(s string) card {
 	return c
 }
 
-func sameSuit(a []bool, h hand) bool {
-	c := []card{}
+func sameSuit(h hand) bool {
+	s := h[0].Suit
 
-	for i, value := range a {
-		if value {
-			c = append(c, h[i])
-		}
-	}
-
-	s := c[0].Suit
-
-	for _, value := range c {
+	for _, value := range h {
 		if value.Suit != s {
 			return false
 		}
@@ -202,66 +199,72 @@ func findPair(h hand) int {
 	return pair
 }
 
-func evaluateHand(h hand) int {
-	suits := []bool{true, true, true, true, true}
+func (h hand) isRoyalFlush() bool {
+	return sameSuit(h) && h[0].value == 14 && h[1].value == 13 &&
+		h[2].value == 12 && h[3].value == 11 && h[4].value == 10
+}
 
-	if sameSuit(suits, h) && h[0].value == 14 && h[1].value == 13 && h[2].value == 12 && h[3].value == 11 && h[4].value == 10 {
-		fmt.Println(h)
-		fmt.Println("ROYALFLUSH")
+func (h hand) isStraightFlush() bool {
+	return sameSuit(h) && h[0].value == h[1].value+1 && h[1].value == h[2].value+1 &&
+		h[2].value == h[3].value+1 && h[3].value == h[4].value+1
+}
+
+func (h hand) isFour() bool {
+	return h[1].value == h[2].value && h[2].value == h[3].value &&
+		(h[0].value == h[1].value || h[3].value == h[4].value)
+}
+
+func (h hand) isFullHouse() bool {
+	return h[0].value == h[1].value && h[3].value == h[4].value &&
+		(h[2].value == h[1].value || h[2].value == h[3].value)
+}
+
+func (h hand) isFlush() bool {
+	return sameSuit(h)
+}
+
+func (h hand) isStraight() bool {
+	return h[0].value == h[1].value+1 && h[1].value == h[2].value+1 &&
+		h[2].value == h[3].value+1 && h[3].value == h[4].value+1
+}
+
+func (h hand) isThree() bool {
+	return (h[0].value == h[1].value && h[1].value == h[2].value) ||
+		(h[1].value == h[2].value && h[2].value == h[3].value) ||
+		(h[2].value == h[3].value && h[3].value == h[4].value)
+}
+
+func (h hand) isTwoPairs() bool {
+	return findPair(h) == 2
+}
+
+func (h hand) isOnePair() bool {
+	return findPair(h) == 1
+}
+
+func evaluateHand(h hand) rank {
+	switch {
+	case h.isRoyalFlush():
 		return ROYALFLUSH
-	}
-
-	if sameSuit(suits, h) && h[0].value == h[1].value+1 && h[1].value == h[2].value+1 && h[2].value == h[3].value+1 && h[3].value == h[4].value+1 {
-		fmt.Println(h)
-		fmt.Println("FLUSH")
-		return FLUSH
-	}
-
-	if h[1].value == h[2].value && h[2].value == h[3].value && (h[0].value == h[1].value || h[3].value == h[4].value) {
-		fmt.Println(h)
-		fmt.Println("FOUR")
+	case h.isStraightFlush():
+		return STRAIGHTFLUSH
+	case h.isFour():
 		return FOUR
-	}
-
-	if h[0].value == h[1].value && h[3].value == h[4].value && (h[2].value == h[1].value || h[2].value == h[3].value) {
-		fmt.Println(h)
-		fmt.Println("FULLHOUSE")
+	case h.isFullHouse():
 		return FULLHOUSE
-	}
-
-	if sameSuit(suits, h) {
-		fmt.Println(h)
-		fmt.Println("FLUSH")
+	case h.isFlush():
 		return FLUSH
-	}
-
-	if h[0].value == h[1].value+1 && h[1].value == h[2].value+1 && h[2].value == h[3].value+1 && h[3].value == h[4].value+1 {
-		fmt.Println(h)
-		fmt.Println("STRAIGHT")
+	case h.isStraight():
 		return STRAIGHT
-	}
-
-	if (h[0].value == h[1].value && h[1].value == h[2].value) || (h[1].value == h[2].value && h[2].value == h[3].value) || (h[2].value == h[3].value && h[3].value == h[4].value) {
-		fmt.Println(h)
-		fmt.Println("THREE")
+	case h.isThree():
 		return THREE
-	}
-
-	if findPair(h) == 2 {
-		fmt.Println(h)
-		fmt.Println("TWOPAIRS")
+	case h.isTwoPairs():
 		return TWOPAIRS
-	}
-
-	if findPair(h) == 1 {
-		fmt.Println(h)
-		fmt.Println("ONEPAIR")
+	case h.isOnePair():
 		return ONEPAIR
+	default:
+		return HIGHCARD
 	}
-
-	fmt.Println(h)
-	fmt.Println("HIGHCARD")
-	return HIGHCARD
 }
 
 func onePairComparables(h hand) []card {
@@ -290,7 +293,7 @@ func onePairComparables(h hand) []card {
 	return comparables
 }
 
-func onePair(first, second hand) bool {
+func onePair(first, second hand) result {
 	return highCard(onePairComparables(first), onePairComparables(second), 0)
 }
 
@@ -317,22 +320,22 @@ func twoPairsComparables(h hand) []card {
 	return comparables
 }
 
-func twoPairs(first, second hand) bool {
+func twoPairs(first, second hand) result {
 	return highCard(twoPairsComparables(first), twoPairsComparables(second), 0)
 }
 
-func highCard(first, second []card, index int) bool {
+func highCard(first, second []card, index int) result {
 	for i := index; i < len(first); i++ {
 		if first[i].value > second[i].value {
-			return true
+			return winnerFirst
 		}
 
 		if first[i].value < second[i].value {
-			return false
+			return winnerSecond
 		}
 	}
 
-	return false
+	return draw
 }
 
 func threeComparables(h hand) []card {
@@ -348,7 +351,7 @@ func threeComparables(h hand) []card {
 	return comparables
 }
 
-func three(first, second hand) bool {
+func three(first, second hand) result {
 	return highCard(threeComparables(first), threeComparables(second), 0)
 }
 
@@ -366,7 +369,7 @@ func fourComparables(h hand) []card {
 	return comparables
 }
 
-func four(first, second hand) bool {
+func four(first, second hand) result {
 	return highCard(fourComparables(first), fourComparables(second), 0)
 }
 
@@ -384,7 +387,7 @@ func fullHouseComparables(h hand) []card {
 	return comparables
 }
 
-func fullHouse(first, second hand) bool {
+func fullHouse(first, second hand) result {
 	return highCard(fullHouseComparables(first), fullHouseComparables(second), 0)
 }
 
@@ -398,10 +401,7 @@ func main() {
 	wins := 0
 
 	for _, g := range games {
-		g.findWinner()
-		fmt.Println(g.winnerFirst)
-		fmt.Println()
-		if g.winnerFirst {
+		if g.findResult() == winnerFirst {
 			wins++
 		}
 	}
