@@ -9,10 +9,50 @@ import (
 	"strings"
 )
 
-type rank int
+type primaryRank int
+type secondaryRank []card
+
+func compareSecondaryRanks(r1, r2 secondaryRank, index int) result {
+	for i := index; i < len(r1); i++ {
+		if r1[i].value > r2[i].value {
+			return winnerFirst
+		}
+
+		if r1[i].value < r2[i].value {
+			return winnerSecond
+		}
+	}
+
+	return draw
+}
+
+type rank struct {
+	primary   primaryRank
+	secondary secondaryRank
+}
+
+func (hand *rank) getSecondaryRank() []card {
+	return hand.secondary
+}
+
+func (hand *rank) getPrimaryRank() primaryRank {
+	return hand.primary
+}
+
+func comparison(hand1, hand2 rank) result {
+	if hand1.getPrimaryRank() > hand2.getPrimaryRank() {
+		return winnerFirst
+	}
+
+	if hand1.getPrimaryRank() < hand2.getPrimaryRank() {
+		return winnerSecond
+	}
+
+	return compareSecondaryRanks(hand1.getSecondaryRank(), hand2.getSecondaryRank(), 0)
+}
 
 const (
-	HIGHCARD rank = iota
+	HIGHCARD primaryRank = iota
 	ONEPAIR
 	TWOPAIRS
 	THREE
@@ -74,45 +114,10 @@ func (h hand) Swap(i, j int) {
 }
 
 func (g *game) findResult() result {
-	first := g.firstHand
-	sort.Sort(first)
+	rankedFirst := evaluateHand(g.firstHand)
+	rankedSecond := evaluateHand(g.secondHand)
 
-	second := g.secondHand
-	sort.Sort(second)
-
-	rankFirst := evaluateHand(first)
-	rankSecond := evaluateHand(second)
-
-	if rankFirst > rankSecond {
-		return winnerFirst
-	}
-
-	if rankFirst < rankSecond {
-		return winnerSecond
-	}
-
-	switch rankFirst {
-	case ROYALFLUSH:
-		return draw
-	case STRAIGHTFLUSH:
-		return highCard(first, second, 0)
-	case FOUR:
-		return four(first, second)
-	case FULLHOUSE:
-		return fullHouse(first, second)
-	case FLUSH:
-		return highCard(first, second, 0)
-	case STRAIGHT:
-		return highCard(first, second, 0)
-	case THREE:
-		return three(first, second)
-	case TWOPAIRS:
-		return twoPairs(first, second)
-	case ONEPAIR:
-		return onePair(first, second)
-	default:
-		return highCard(first, second, 0)
-	}
+	return comparison(rankedFirst, rankedSecond)
 }
 
 func readGameFile(fileName string) ([]game, error) {
@@ -144,10 +149,13 @@ func readGame(line string) game {
 		cards = append(cards, readCard(value))
 	}
 
-	return game{
-		firstHand:  cards[0:5],
-		secondHand: cards[5:10],
-	}
+	firstHand := hand(cards[0:5])
+	sort.Sort(firstHand)
+
+	secondHand := hand(cards[5:10])
+	sort.Sort(secondHand)
+
+	return game{firstHand, secondHand}
 }
 
 func readCard(s string) card {
@@ -185,210 +193,159 @@ func sameSuit(h hand) bool {
 	return true
 }
 
-func findPair(h hand) int {
+func findPair(h hand) (int, []card) {
 	pair := 0
+	var pairCard card
+	var comparables []card
 
 	for i := 0; i < h.Len(); i++ {
 		for j := i; j < h.Len(); j++ {
 			if i != j && h[i].value == h[j].value {
 				pair++
+				pairCard = h[i]
 			}
 		}
 	}
 
-	return pair
+	if pair == 0 {
+		return 0, nil
+	}
+
+	comparables = append(comparables, pairCard)
+
+	for i := 0; i < h.Len(); i++ {
+		if h[i].value != pairCard.value {
+			comparables = append(comparables, h[i])
+		}
+	}
+
+	return pair, comparables
 }
 
-func (h hand) isRoyalFlush() bool {
+func (h hand) isRoyalFlush() (bool, []card) {
 	return sameSuit(h) && h[0].value == 14 && h[1].value == 13 &&
-		h[2].value == 12 && h[3].value == 11 && h[4].value == 10
+		h[2].value == 12 && h[3].value == 11 && h[4].value == 10, nil
 }
 
-func (h hand) isStraightFlush() bool {
-	return sameSuit(h) && h[0].value == h[1].value+1 && h[1].value == h[2].value+1 &&
-		h[2].value == h[3].value+1 && h[3].value == h[4].value+1
+func (h hand) isStraightFlush() (bool, []card) {
+	if sameSuit(h) && h[0].value == h[1].value+1 && h[1].value == h[2].value+1 &&
+		h[2].value == h[3].value+1 && h[3].value == h[4].value+1 {
+		return true, h
+	}
+
+	return false, nil
 }
 
-func (h hand) isFour() bool {
-	return h[1].value == h[2].value && h[2].value == h[3].value &&
-		(h[0].value == h[1].value || h[3].value == h[4].value)
+func (h hand) isFour() (bool, []card) {
+	if h[1].value == h[2].value && h[2].value == h[3].value {
+		if h[0].value == h[1].value {
+			return true, []card{h[0], h[4]}
+		} else if h[3].value == h[4].value {
+			return true, []card{h[4], h[0]}
+		}
+	}
+
+	return false, nil
 }
 
-func (h hand) isFullHouse() bool {
-	return h[0].value == h[1].value && h[3].value == h[4].value &&
-		(h[2].value == h[1].value || h[2].value == h[3].value)
+func (h hand) isFullHouse() (bool, []card) {
+	if h[0].value == h[1].value && h[3].value == h[4].value {
+		if h[2].value == h[1].value {
+			return true, []card{h[0], h[4]}
+		} else if h[2].value == h[3].value {
+			return true, []card{h[4], h[0]}
+		}
+	}
+
+	return false, nil
 }
 
-func (h hand) isFlush() bool {
-	return sameSuit(h)
+func (h hand) isFlush() (bool, []card) {
+	if sameSuit(h) {
+		return true, h
+	}
+
+	return false, nil
 }
 
-func (h hand) isStraight() bool {
-	return h[0].value == h[1].value+1 && h[1].value == h[2].value+1 &&
-		h[2].value == h[3].value+1 && h[3].value == h[4].value+1
+func (h hand) isStraight() (bool, []card) {
+	if h[0].value == h[1].value+1 && h[1].value == h[2].value+1 &&
+		h[2].value == h[3].value+1 && h[3].value == h[4].value+1 {
+		return true, h
+	}
+
+	return false, nil
 }
 
-func (h hand) isThree() bool {
-	return (h[0].value == h[1].value && h[1].value == h[2].value) ||
-		(h[1].value == h[2].value && h[2].value == h[3].value) ||
-		(h[2].value == h[3].value && h[3].value == h[4].value)
+func (h hand) isThree() (bool, []card) {
+	if h[0].value == h[1].value && h[1].value == h[2].value {
+		return true, []card{h[0], h[3], h[4]}
+	}
+
+	if h[1].value == h[2].value && h[2].value == h[3].value {
+		return true, []card{h[1], h[0], h[4]}
+	}
+
+	if h[2].value == h[3].value && h[3].value == h[4].value {
+		return true, []card{h[2], h[0], h[1]}
+	}
+
+	return false, nil
 }
 
-func (h hand) isTwoPairs() bool {
-	return findPair(h) == 2
+func (h hand) isTwoPairs() (bool, []card) {
+	pairs, comparables := findPair(h)
+
+	if pairs == 2 {
+		return true, comparables
+	}
+
+	return false, nil
 }
 
-func (h hand) isOnePair() bool {
-	return findPair(h) == 1
+func (h hand) isOnePair() (bool, []card) {
+	pairs, comparables := findPair(h)
+
+	if pairs == 1 {
+		return true, comparables
+	}
+
+	return false, nil
 }
 
 func evaluateHand(h hand) rank {
-	switch {
-	case h.isRoyalFlush():
-		return ROYALFLUSH
-	case h.isStraightFlush():
-		return STRAIGHTFLUSH
-	case h.isFour():
-		return FOUR
-	case h.isFullHouse():
-		return FULLHOUSE
-	case h.isFlush():
-		return FLUSH
-	case h.isStraight():
-		return STRAIGHT
-	case h.isThree():
-		return THREE
-	case h.isTwoPairs():
-		return TWOPAIRS
-	case h.isOnePair():
-		return ONEPAIR
-	default:
-		return HIGHCARD
-	}
-}
-
-func onePairComparables(h hand) []card {
-	comparables := []card{}
-	found := false
-	var pairValue card
-
-	for i := 0; i < h.Len() && !found; i++ {
-		for j := i; j < h.Len(); j++ {
-			if i != j && h[i].value == h[j].value {
-				found = true
-				pairValue = h[i]
-				break
-			}
-		}
+	if temp, comparables := h.isRoyalFlush(); temp {
+		return rank{ROYALFLUSH, comparables}
 	}
 
-	comparables = append(comparables, pairValue)
-
-	for _, value := range h {
-		if pairValue.value != value.value {
-			comparables = append(comparables, value)
-		}
+	if temp, comparables := h.isStraightFlush(); temp {
+		return rank{STRAIGHTFLUSH, comparables}
 	}
 
-	return comparables
-}
-
-func onePair(first, second hand) result {
-	return highCard(onePairComparables(first), onePairComparables(second), 0)
-}
-
-func twoPairsComparables(h hand) []card {
-	comparables := []card{}
-
-	if h[0] == h[1] {
-		comparables = append(comparables, h[1])
-
-		if h[2] == h[3] {
-			comparables = append(comparables, h[2])
-			comparables = append(comparables, h[4])
-		} else {
-			comparables = append(comparables, h[4])
-			comparables = append(comparables, h[2])
-		}
-
-	} else {
-		comparables = append(comparables, h[1])
-		comparables = append(comparables, h[4])
-		comparables = append(comparables, h[0])
+	if temp, comparables := h.isFour(); temp {
+		return rank{FOUR, comparables}
 	}
 
-	return comparables
-}
-
-func twoPairs(first, second hand) result {
-	return highCard(twoPairsComparables(first), twoPairsComparables(second), 0)
-}
-
-func highCard(first, second []card, index int) result {
-	for i := index; i < len(first); i++ {
-		if first[i].value > second[i].value {
-			return winnerFirst
-		}
-
-		if first[i].value < second[i].value {
-			return winnerSecond
-		}
+	if temp, comparables := h.isFullHouse(); temp {
+		return rank{FULLHOUSE, comparables}
+	}
+	if temp, comparables := h.isFlush(); temp {
+		return rank{FLUSH, comparables}
+	}
+	if temp, comparables := h.isStraight(); temp {
+		return rank{STRAIGHT, comparables}
+	}
+	if temp, comparables := h.isThree(); temp {
+		return rank{THREE, comparables}
+	}
+	if temp, comparables := h.isTwoPairs(); temp {
+		return rank{TWOPAIRS, comparables}
+	}
+	if temp, comparables := h.isOnePair(); temp {
+		return rank{ONEPAIR, comparables}
 	}
 
-	return draw
-}
-
-func threeComparables(h hand) []card {
-	comparables := []card{}
-
-	comparables = append(comparables, h[2])
-	for _, value := range h {
-		if value.value != h[2].value {
-			comparables = append(comparables, value)
-		}
-	}
-
-	return comparables
-}
-
-func three(first, second hand) result {
-	return highCard(threeComparables(first), threeComparables(second), 0)
-}
-
-func fourComparables(h hand) []card {
-	comparables := []card{}
-
-	if h[0].value == h[1].value {
-		comparables = append(comparables, h[0])
-		comparables = append(comparables, h[4])
-	} else {
-		comparables = append(comparables, h[4])
-		comparables = append(comparables, h[0])
-	}
-
-	return comparables
-}
-
-func four(first, second hand) result {
-	return highCard(fourComparables(first), fourComparables(second), 0)
-}
-
-func fullHouseComparables(h hand) []card {
-	comparables := []card{}
-
-	if h[1].value == h[2].value {
-		comparables = append(comparables, h[0])
-		comparables = append(comparables, h[4])
-	} else {
-		comparables = append(comparables, h[4])
-		comparables = append(comparables, h[0])
-	}
-
-	return comparables
-}
-
-func fullHouse(first, second hand) result {
-	return highCard(fullHouseComparables(first), fullHouseComparables(second), 0)
+	return rank{HIGHCARD, secondaryRank(h)}
 }
 
 func main() {
